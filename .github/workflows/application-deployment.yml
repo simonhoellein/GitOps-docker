@@ -1,0 +1,68 @@
+---
+name: Application Deployment
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "services/**"
+  workflow_dispatch:
+
+jobs:
+  validate-yaml:
+    name: yamllint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: run yamllint
+        run: yamllint .
+
+  check-changes:
+    needs: [validate-yaml]
+    runs-on: ubuntu-latest
+
+    outputs:
+      hello-world: ${{ steps.changes-prod.outputs.hello-world }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: changes-docker-prod
+        uses: dorny/paths-filter@v3
+        id: changes-prod
+        with:
+          base: 'main'
+          list-files: 'json'
+          filters: |
+            hello-world:
+              - 'services/hello-world/**'
+
+  deploy-docker-1:
+    needs: [validate-yaml, check-changes]
+    runs-on: docker-1
+    steps:
+      - name: update-repository
+        run: |
+          cd ${{ vars.GIT_DOCKER_REPO }}
+          git pull
+          git checkout main
+          git pull
+
+      - name: deploy-hello-world
+        if: needs.check-changes.outputs.hello-world == 'true'
+        run: |
+          cd ${{ vars.GIT_DOCKER_REPO }}/services/hello-world
+          docker compose pull
+          docker compose up -d --remove-orphans
+
+  review-docker-1:
+    needs: [deploy-docker-1]
+    runs-on: docker-1
+    steps:
+      - name: Running Containers
+        run: docker ps
+      - name: Running Stacks
+        run: docker compose ls
