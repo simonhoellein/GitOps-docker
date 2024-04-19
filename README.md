@@ -2,7 +2,9 @@
 
 This is a boilerplate repo to user docker compose with an GitOps approach.
 
-Deployment of containers are done by Github Actions and selfhosted runners. As docker isn't like k8s ans support tools like flux, this could be an alternative to manage your docker compose in a git repository with automatic deployments on the docker host.
+Deployment of containers are done by Github Actions and selfhosted runners.
+As docker isn't like k8s ans support tools like flux, this could be an alternative to manage your
+docker compose in a git repository with automatic deployments on the docker host.
 
 ## Wiki
 
