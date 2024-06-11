@@ -2,7 +2,8 @@
 self-hosted-runner:
   # Labels of self-hosted runner in array of string
   labels:
-    - docker-1
+    - host-1
+    - host-2
 # Configuration variables in array of strings defined in your repository or organization
 config-variables:
   - GIT_DOCKER_REPO

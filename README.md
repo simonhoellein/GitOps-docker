@@ -19,34 +19,26 @@ This repo uses [Pre-Commit](https://pre-commit.com/) to lint some things before 
 
 - Create a folder for the application in `/services` and put docker-compose file and other configuration files in there
 
-- Modify the deployment pipeline in `/.github/workflows/docker-deployment-prod.yml`:
+- Modify the config files in `/config`:
 
-- Add the App to the output variables to check for changes:
+- Add the App to the `app-[host].yml` filter file for the corresponding host and make sure that the two application names are the same:
 
 ```yaml
-jobs:
-    check-changes:
-        outputs:
-            application: ${{ steps.changes-prod.outputs.application }}
+application-name:
+  - 'services/application-name/**'
 ```
 
-- Add the App to the filter list:
+- Add the App to the `system.yml` config file under the section of the corresponding host:
 
 ```yaml
-filters: |
-    application:
-        - 'services/application/**'
-```
+host-1:
+  - 'services/application-1/**'
+  - 'services/application-2/**'
 
-- add deployment block in the section from the docker host where the app should be deployed, e.g.: `deploy-docker-prod-1`
-
-```yaml
-- name: deploy-application
-if: needs.check-changes.outputs.application == 'true'
-run: |
-    cd ${{ vars.GIT_DOCKER_REPO }}/services/application
-    docker compose pull
-    docker compose up -d --remove-orphans
+host-2:
+  - 'services/application-1/**'
+  - 'services/application-3/**'
+'
 ```
 
 - add the application to the `Services` section of the README.md file
@@ -64,19 +56,61 @@ self-hosted-runner:
     - runner-label
 ```
 
+- create a application config file in `/config` with the name `app-[hostname].yml`
+- create a section in the system config `/config/system.yml`
 - add the runner to the deployment pipeline in `./github/workflows/docker-deployment-prod.yml`.
 
-deployment-job:
+#### Deployment-pipeline changes:
 
 **change:**
 
-- name: `deploy-<docker-host-name>`
+- output-name: `<hostname>`
+
+```yaml
+check-changes-system:
+    outputs:
+      <hostname>: ${{ steps.changes-system.outputs.<hostname> }}
+```
+
+**change:**
+
+- Job-Name: `<hostname>`
+- outputs: app-`<hostname>`
+- step-name: `changes-docker-<environment>`
+- filters: config/`<config-file>`
+
+```yaml
+  check-changes-app-<hostname>:
+    needs: [validate-yaml]
+    runs-on: ubuntu-latest
+
+    outputs:
+      app-<hostname>: ${{ steps.changes-app.outputs.changes }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: changes-docker-<environment>
+        uses: dorny/paths-filter@v3
+        id: changes-app
+        with:
+          base: 'main'
+          list-files: 'json'
+          filters: config/<config-file>
+```
+
+**change:**
+
+- Job-Name: `<hostname>`
+- if: `<hostname>`
 - runs-on: `<runner-label>`
 
 ```yaml
-deploy-<docker-host-name>:
-    needs: [validate-yaml, check-changes]
+  update-repo-<hostname>:
+    needs: [check-changes-system]
+    if: ${{ needs.check-changes-system.outputs.<hostname> == 'true' }}
     runs-on: <runner-label>
+
     steps:
       - name: update-repository
         run: |
@@ -86,21 +120,59 @@ deploy-<docker-host-name>:
           git pull
 ```
 
-review-job:
+**change:**
+
+- Job-Name: `<environment>`
+- needs: `<hostname>`
+- if: `<hostname>`
+- runs-on: `<runner-label>`
+- environment: `<environment>`
+- matrix-app: `<hostname>`
+
+```yaml
+  deploy-docker-<environment>:
+    needs: [check-changes-system, check-changes-app-<hostname>, update-repo-<hostname>]
+    if: ${{ needs.check-changes-system.outputs.<hostname> == 'true' }}
+    runs-on: <runner-label>
+    environment: <environment>
+    strategy:
+      matrix:
+        app: ${{ fromJSON(needs.check-changes-app-<hostname>.outputs.app-<hostname>) }}
+
+    steps:
+      - name: deploy ${{ matrix.app }}
+        run: |
+          cd ${{ vars.GIT_DOCKER_REPO }}/services/${{ matrix.app }}
+          docker compose pull
+          docker compose up -d --remove-orphans
+```
 
 **change:**
 
-- name: `review-<docker-host-name>`
-- needs: `deploy-<docker-host-name>`
+- Job-Name: `<environment>`
+- needs: `<hostname>`
 - runs-on: `<runner-label>`
+- step-name: `<hostname>`
+- guid: `<newrelic_entity_guid>`
 
 ```yaml
-review-<docker-host-name>:
-    needs: [deploy-<docker-host-name>]
+  review-docker-<environment>:
+    needs: [deploy-docker-<hostname>, check-changes-app-<hostname>]
     runs-on: <runner-label>
     steps:
       - name: Running Containers
+        id: running-containers
         run: docker ps
+
       - name: Running Stacks
+        id: running-stacks
         run: docker compose ls
+
+      - name: Change Marker <hostname>
+        uses: newrelic/deployment-marker-action@v2.3.0
+        with:
+          apiKey: ${{ secrets.NEW_RELIC_API_KEY }}
+          guid: "<newrelic_entity_guid>"
+          version: "${{ github.run_number }}"
+          user: "${{ github.actor }}"
 ```

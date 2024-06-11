@@ -1,0 +1,5 @@
+host-1:
+  - 'services/hello-world/**'
+
+host-2:
+  - 'services/hello-world/**'

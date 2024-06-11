@@ -20,29 +20,74 @@ jobs:
       - name: run yamllint
         run: yamllint .
 
-  check-changes:
+#########################################################################
+# Check for Changes
+#
+
+  check-changes-system:
     needs: [validate-yaml]
     runs-on: ubuntu-latest
 
     outputs:
-      hello-world: ${{ steps.changes-prod.outputs.hello-world }}
+      host-1: ${{ steps.changes-system.outputs.host-1 }}
+      host-2: ${{ steps.changes-system.outputs.host-2 }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: changes-docker-prod
+      - name: changes-docker-systems
         uses: dorny/paths-filter@v3
-        id: changes-prod
+        id: changes-system
         with:
           base: 'main'
           list-files: 'json'
-          filters: |
-            hello-world:
-              - 'services/hello-world/**'
+          filters: config/system.yml
 
-  deploy-docker-1:
-    needs: [validate-yaml, check-changes]
-    runs-on: docker-1
+  check-changes-app-host-1:
+    needs: [validate-yaml]
+    runs-on: ubuntu-latest
+
+    outputs:
+      app-host-1: ${{ steps.changes-app.outputs.changes }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: changes-docker-host-1
+        uses: dorny/paths-filter@v3
+        id: changes-app
+        with:
+          base: 'main'
+          list-files: 'json'
+          filters: config/app-host-1.yml
+
+  check-changes-app-host-2:
+    needs: [validate-yaml]
+    runs-on: ubuntu-latest
+
+    outputs:
+      app-host-2: ${{ steps.changes-app.outputs.changes }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: changes-docker-host-2
+        uses: dorny/paths-filter@v3
+        id: changes-app
+        with:
+          base: 'main'
+          list-files: 'json'
+          filters: config/app-host-2.yml
+
+#########################################################################
+# Update Repos
+#
+
+  update-repo-host-1:
+    needs: [check-changes-system]
+    if: ${{ needs.check-changes-system.outputs.host-1 == 'true' }}
+    runs-on: docker-host-1
+
     steps:
       - name: update-repository
         run: |
@@ -51,18 +96,95 @@ jobs:
           git checkout main
           git pull
 
-      - name: deploy-hello-world
-        if: needs.check-changes.outputs.hello-world == 'true'
+  update-repo-host-2:
+    needs: [check-changes-system]
+    if: ${{ needs.check-changes-system.outputs.host-2 == 'true' }}
+    runs-on: docker-host-2
+
+    steps:
+      - name: update-repository
         run: |
-          cd ${{ vars.GIT_DOCKER_REPO }}/services/hello-world
+          cd ${{ vars.GIT_DOCKER_REPO }}
+          git pull
+          git checkout main
+          git pull
+
+#########################################################################
+# Deploy Containers
+#
+
+  deploy-docker-host-1:
+    needs: [check-changes-system, check-changes-app-host-1, update-repo-host-1]
+    if: ${{ needs.check-changes-system.outputs.host-1 == 'true' }}
+    runs-on: docker-host-1
+    environment: host-1
+    strategy:
+      matrix:
+        app: ${{ fromJSON(needs.check-changes-app-host-1.outputs.app-host-1) }}
+
+    steps:
+      - name: deploy ${{ matrix.app }}
+        run: |
+          cd ${{ vars.GIT_DOCKER_REPO }}/services/${{ matrix.app }}
           docker compose pull
           docker compose up -d --remove-orphans
 
-  review-docker-1:
-    needs: [deploy-docker-1]
-    runs-on: docker-1
+  deploy-docker-host-2:
+    needs: [check-changes-system, check-changes-app-host-2, update-repo-host-2]
+    if: ${{ needs.check-changes-system.outputs.host-2 == 'true' }}
+    runs-on: docker-host-2
+    environment: host-2
+    strategy:
+      matrix:
+        app: ${{ fromJSON(needs.check-changes-app-host-2.outputs.app-host-2) }}
+
+    steps:
+      - name: deploy ${{ matrix.app }}
+        run: |
+          cd ${{ vars.GIT_DOCKER_REPO }}/services/${{ matrix.app }}
+          docker compose pull
+          docker compose up -d --remove-orphans
+
+#########################################################################
+# Review Containers
+#
+
+  review-docker-host-1:
+    needs: [deploy-docker-host-1]
+    runs-on: docker-host-1
     steps:
       - name: Running Containers
+        id: running-containers
         run: docker ps
+
       - name: Running Stacks
+        id: running-stacks
         run: docker compose ls
+
+      - name: Change Marker host-1
+        uses: newrelic/deployment-marker-action@v2.3.0
+        with:
+          apiKey: ${{ secrets.NEW_RELIC_API_KEY }}
+          guid: "${{ secrets.NEW_RELIC_ENTITY_GUID-1 }}"
+          version: "${{ github.run_number }}"
+          user: "${{ github.actor }}"
+
+  review-docker-host-2:
+    needs: [deploy-docker-host-2]
+    runs-on: docker-host-2
+    steps:
+      - name: Running Containers
+        id: running-containers
+        run: docker ps
+
+      - name: Running Stacks
+        id: running-stacks
+        run: docker compose ls
+
+      - name: Change Marker host-2
+        uses: newrelic/deployment-marker-action@v2.3.0
+        with:
+          apiKey: ${{ secrets.NEW_RELIC_API_KEY }}
+          guid: "${{ secrets.NEW_RELIC_ENTITY_GUID-2 }}"
+          version: "${{ github.run_number }}"
+          user: "${{ github.actor }}"
