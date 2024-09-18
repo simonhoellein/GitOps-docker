@@ -117,7 +117,7 @@ jobs:
     needs: [check-changes-system, check-changes-app-host-1, update-repo-host-1]
     if: ${{ needs.check-changes-system.outputs.host-1 == 'true' }}
     runs-on: docker-host-1
-    environment: host-1
+    environment: ${{ matrix.app }}
     strategy:
       matrix:
         app: ${{ fromJSON(needs.check-changes-app-host-1.outputs.app-host-1) }}
@@ -133,7 +133,7 @@ jobs:
     needs: [check-changes-system, check-changes-app-host-2, update-repo-host-2]
     if: ${{ needs.check-changes-system.outputs.host-2 == 'true' }}
     runs-on: docker-host-2
-    environment: host-2
+    environment: ${{ matrix.app }}
     strategy:
       matrix:
         app: ${{ fromJSON(needs.check-changes-app-host-2.outputs.app-host-2) }}
