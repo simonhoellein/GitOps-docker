@@ -8,6 +8,20 @@ docker compose in a git repository with automatic deployments on the docker host
 
 ## Wiki
 
+### Environment variables and secrets:
+
+The Pipelines requires the following **environment variables** and **secrets** to be set in the repo:
+
+#### Environment variables:
+
+- **GIT_DOCKER_REPO** = Path to repository on host (e.g /opt/git/GitOps-docker)
+- **NEW_RELIC_REGION** = New Relic region from you NR accout (EU/US) - Only needed when New Relic change tracking is used
+
+#### SECRETS:
+
+- **NEW_RELIC_API_KEY** = API Key for New Relic - Only needed when New Relic change tracking is used
+- \*\* NEW_RELIC_ENTITY_GUID-(hostnumber)\*\* = New Relic entity GUID - Only needed when New Relic change tracking is used
+
 ### Precommit
 
 This repo uses [Pre-Commit](https://pre-commit.com/) to lint some things before committing and pushing to git.

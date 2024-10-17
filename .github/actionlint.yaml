@@ -7,3 +7,4 @@ self-hosted-runner:
 # Configuration variables in array of strings defined in your repository or organization
 config-variables:
   - GIT_DOCKER_REPO
+  - NEW_RELIC_REGION
