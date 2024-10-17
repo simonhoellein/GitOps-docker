@@ -9,6 +9,11 @@ on:
   workflow_dispatch:
 
 jobs:
+
+#########################################################################
+# Validate yaml
+#
+
   validate-yaml:
     name: yamllint
     runs-on: ubuntu-latest
@@ -79,6 +84,26 @@ jobs:
           list-files: 'json'
           filters: config/app-host-2.yml
 
+  check-changes-config:
+    needs: [validate-yaml]
+    runs-on: ubuntu-latest
+
+    outputs:
+      changes-config: ${{ steps.filter.outputs.changes-config }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: changes-config
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: 'main'
+          filters: |
+            changes-config:
+              - '**/config/**'
+              - '**/conf/**'
+
 #########################################################################
 # Update Repos
 #
@@ -114,7 +139,7 @@ jobs:
 #
 
   deploy-docker-host-1:
-    needs: [check-changes-system, check-changes-app-host-1, update-repo-host-1]
+    needs: [check-changes-system, check-changes-app-host-1, update-repo-host-1, check-changes-config]
     if: ${{ needs.check-changes-system.outputs.host-1 == 'true' }}
     runs-on: docker-host-1
     environment: ${{ matrix.app }}
@@ -129,8 +154,14 @@ jobs:
           docker compose pull
           docker compose up -d --remove-orphans
 
+      - name: restart containers with changed config
+        if: ${{ needs.check-changes-config.outputs.changes-config == 'true' }}
+        run: |
+          cd ${{ vars.GIT_DOCKER_REPO }}/services/${{ matrix.app }}
+          docker compose restart
+
   deploy-docker-host-2:
-    needs: [check-changes-system, check-changes-app-host-2, update-repo-host-2]
+    needs: [check-changes-system, check-changes-app-host-2, update-repo-host-2, check-changes-config]
     if: ${{ needs.check-changes-system.outputs.host-2 == 'true' }}
     runs-on: docker-host-2
     environment: ${{ matrix.app }}
@@ -144,6 +175,12 @@ jobs:
           cd ${{ vars.GIT_DOCKER_REPO }}/services/${{ matrix.app }}
           docker compose pull
           docker compose up -d --remove-orphans
+
+      - name: restart containers with changed config
+        if: ${{ needs.check-changes-config.outputs.changes-config == 'true' }}
+        run: |
+          cd ${{ vars.GIT_DOCKER_REPO }}/services/${{ matrix.app }}
+          docker compose restart
 
 #########################################################################
 # Review Containers
@@ -168,6 +205,11 @@ jobs:
           guid: "${{ secrets.NEW_RELIC_ENTITY_GUID-1 }}"
           version: "${{ github.run_number }}"
           user: "${{ github.actor }}"
+          region: "${{ vars.NEW_RELIC_REGION }}"
+          commit: "${{ github.sha }}"
+          changelog: "${{ github.event.head_commit.message }}"
+          deeplink: "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
+          description: "Impacted Applications: ${{ needs.check-changes-app-host-1.outputs.app-host-1 }}"
 
   review-docker-host-2:
     needs: [deploy-docker-host-2]
@@ -188,3 +230,8 @@ jobs:
           guid: "${{ secrets.NEW_RELIC_ENTITY_GUID-2 }}"
           version: "${{ github.run_number }}"
           user: "${{ github.actor }}"
+          region: "${{ vars.NEW_RELIC_REGION }}"
+          commit: "${{ github.sha }}"
+          changelog: "${{ github.event.head_commit.message }}"
+          deeplink: "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
+          description: "Impacted Applications: ${{ needs.check-changes-app-host-2.outputs.app-host-2 }}"

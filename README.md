@@ -22,14 +22,17 @@ flowchart LR
     id1(yamllint) --> id2(check-changes-system)
     id1 --> id3(check-changes-host-1)
     id1 --> id4(check-changes-host-2)
+    id1 --> id11(check-changes-config)
     id2 --> id5(update-repo-host-1)
     id2 --> id6(update-repo-host-2)
     id2 --> id7(Matrix: delpoyment-host-1)
     id2 --> id8(Matrix: delpoyment-host-2)
     id5 --> id7
     id3 --> id7
+    id11 --> id7
     id6 --> id8
     id4 --> id8
+    id11 --> id8
     id7 --> id9(review-host-1)
     id8 --> id10(review-host-2)
 
